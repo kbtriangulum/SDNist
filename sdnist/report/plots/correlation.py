@@ -88,7 +88,10 @@ def save_correlation_difference_plot(correlation_data: pd.DataFrame,
                                      output_directory: Path) -> List[Path]:
     cd = correlation_data
     cd = cd.abs()
-    fig = plt.figure(figsize=(6, 6), dpi=100)
+    w = 6
+    if cd.shape[1] > 20:
+        w = int(cd.shape[0] / 20 * 4)
+    fig = plt.figure(figsize=(w, w), dpi=100)
     v_max = 0.15
     plt.imshow(cd, cmap='Blues', interpolation='none', vmin=0, vmax=v_max)
     im_ratio = cd.shape[0] / cd.shape[1]
