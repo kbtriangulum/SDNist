@@ -323,7 +323,10 @@ def bar_charts(
             start = chunk_idx * chunk_size
             stop = min(start + chunk_size, len(merged))
             chunk = merged.iloc[start:stop]
-
+            chunk_max_counts = max(
+                chunk["count_target"].max(),
+                chunk["count_deidentified"].max(),
+            )
             ax = axes[chunk_idx, 0]
             x_axis = np.arange(len(chunk))
             ax.bar(
@@ -338,7 +341,10 @@ def bar_charts(
                 width=bar_width,
                 label="Deidentified" if chunk_idx == 0 else None,
             )
-            ax.set_ylim(0, max_counts * 1.1)  # add some space above bars
+            if chunk_max_counts * 3 < max_counts:
+                ax.set_ylim(0, chunk_max_counts * 2)
+            else:
+                ax.set_ylim(0, max_counts * 1.1)  # add some space above bars
             # Clean up -1 sentinel values
             labels = chunk[feature].astype(str).replace("-1", "N")
 
