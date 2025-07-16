@@ -1,5 +1,13 @@
 {
     "drop_features": [],
+    "metrics": [
+        "Kmarginal",
+        "Univariates",
+        "PropensityMSE",
+        "PCA",
+        "Correlations",
+        "Unique Exact Matches"
+    ],
     "k_marginal": {
         "ignore_features": [
         ],
@@ -12,5 +20,9 @@
     "bins": {
     },
     "correlation_features": [
-    ]
+    ],
+    "apparent_match_distribution": {
+        "quasi_identifier_features":
+            ["SEX1", "FIPST", "SECTOR", "VET1", "RACE1"]
+    }
 }
