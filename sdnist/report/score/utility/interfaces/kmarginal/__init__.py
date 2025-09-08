@@ -56,7 +56,7 @@ class KMarginalReport:
 
         # number of worst stable feature values to show on the report
         self.default_worst_stable_feature_values = 2
-
+        self.ignore_features = self.ds.config['k_marginal']['ignore_features']
         self.main_table_name = 'all_groups'
         self.stable_feature_table_name = 'stable_feature'
 
@@ -70,6 +70,7 @@ class KMarginalReport:
 
         k_marginal = KMarginal(self.ds.d_target_data,
                                self.ds.d_synthetic_data,
+                               self.ignore_features,
                                sf)
         k_marginal.compute_score()
         self.kmarginal_score = int(k_marginal.score)
@@ -92,9 +93,11 @@ class KMarginalReport:
 
     def compute_subsample_kmarginal_scores(self, stable_feature: Optional[str]):
 
-        subsample_scores = kmarginal_subsamples(self.ds.d_target_data, stable_feature)
+        subsample_scores = kmarginal_subsamples(self.ds.d_target_data,
+                                                self.ignore_features,
+                                                stable_feature)
         subsample_stable_feature_score = kmarginal_stable_feature_subsamples(
-            self.ds.d_target_data, stable_feature)
+            self.ds.d_target_data, self.ignore_features, stable_feature)
         return subsample_scores, subsample_stable_feature_score
 
     def get_stable_feature_values(self, index: int):
@@ -114,6 +117,7 @@ class KMarginalReport:
             stable_feature_values = self.get_stable_feature_values(i + 1)
             k_marginal = KMarginal(self.ds.d_target_data,
                                    self.ds.d_synthetic_data,
+                                   self.ignore_features,
                                    sf)
             k_marginal.compute_score()
             stable_feature_scores = k_marginal.scores
