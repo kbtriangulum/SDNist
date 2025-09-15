@@ -181,7 +181,7 @@ class Dataset:
         out_of_bound_features = [f for f in self.validation_log.keys()]
 
         self.features = self.c_synthetic_data.columns.tolist()
-        self.features = list(set(self.features).difference(set(out_of_bound_features)))
+        # self.features = list(set(self.features).difference(set(out_of_bound_features)))
 
         # update data after validation and cleaning
         self.synthetic_data = self.synthetic_data[self.features]

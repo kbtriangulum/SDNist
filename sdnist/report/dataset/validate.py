@@ -46,7 +46,7 @@ def validate_categorical_feature(
                  for v in f_vals]
     if all(val_types):
         f_vals = [code_type(v) for v in f_vals]
-        f_uniques = [code_type(v) for v in f_uniques]
+        f_uniques = [code_type(v) if v != 'nan' else v for v in f_uniques]
     vob_values = list(set(f_uniques) - set(f_vals))
     return vob_values
 
@@ -91,18 +91,21 @@ def validate(data: pd.DataFrame,
             vob_vals = validate_categorical_feature(d, data_dict, f, dc_type)
         else:
             vob_vals = validate_continuous_feature(d, data_dict, f)
+        all_vob_vals = vob_vals.copy()
         if len(vob_vals):
             has_nan_vob = 'nan' in vob_vals
             nan_vob_row_counts = len(d[d[f].isna()]) if has_nan_vob else 0
             vob_row_count = len(d[d[f].isin(vob_vals)])
             vob_row_count = vob_row_count + nan_vob_row_counts
-            if any([v for v in vob_vals if safe_isnan(v)]):
+            if has_nan_vob:
                 d = d[~d[f].isna()]
+            if len(vob_vals):
+                d = d[~d[f].isin(vob_vals)]
             vob_features.append((f, ValidationData(f, vob_vals, vob_row_count)))
             console_out(log,
                         f'Value out of bound for feature {f}, '
-                        f'out of bound values: {vob_vals}. '
-                        f'Dropped {f} from evaluation.')
+                        f'out of bound values: {all_vob_vals}. '
+                        f'Dropped {vob_row_count} rows from evaluation.')
     validation_log = dict(vob_features)
 
     return d, validation_log
