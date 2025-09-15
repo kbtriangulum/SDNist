@@ -13,6 +13,7 @@ from sdnist.report.score.utility.interfaces.inconsistency import \
 from sdnist.report.score.utility.interfaces.pca import PCAReport
 from sdnist.report.score.utility.interfaces.propensity import PropensityMSEReport
 from sdnist.report.score.utility.interfaces.correlations import CorrelationsReport
+from sdnist.report.score.utility.interfaces.predictive_utility import PredictiveUtilityReport
 from sdnist.report import Dataset
 from sdnist.report.report_data import \
     ReportData, ReportUIData, UtilityScorePacket, Attachment, AttachmentType
@@ -33,6 +34,13 @@ def utility_score(dataset: Dataset, ui_data: ReportUIData, report_data: ReportDa
     rd = report_data
 
     kmr = None
+    if 'PredictiveUtility' in metrics:
+        log.msg('Predictive Utility', level=3)
+        pur = PredictiveUtilityReport(ds, r_ui_d, rd)
+        pur.compute()
+        pur.add_to_ui()
+        log.end_msg()
+
     if 'Kmarginal' in metrics:
         log.msg('Kmarginal', level=3)
         kmr = KMarginalReport(ds, r_ui_d, rd)
