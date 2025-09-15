@@ -123,6 +123,8 @@ def privacy_score(
             # Total rows matched on quasi-identifiers as attachment
             rec_matched = amd_plot.quasi_matched_df.shape[0]
             rec_percent = round(rec_matched / ds.c_target_data.shape[0] * 100, 2)
+            unique_qid_rows = amd_plot.report_data.get('unique_qid_rows', 0)
+            unq_qid_percent = round(unique_qid_rows / ds.c_target_data.shape[0] * 100, 2)
 
             rec_mat_para_a = Attachment(
                 name="Records Matched on Quasi-Identifiers",
@@ -133,7 +135,15 @@ def privacy_score(
                 name=None,
                 _data=f"Number of Target Data records exactly matched "
                 f"in Deid. Data on Quasi-Identifiers: "
-                f"-Highlight-{rec_matched} ({rec_percent}%)-Highlight-",
+                f"-Highlight-{rec_matched} ({rec_percent}% of all target records)-Highlight-",
+                _type=AttachmentType.String,
+            )
+            
+            # Unique QID rows as attachment
+            unique_qid_attachment = Attachment(
+                name=None,
+                _data=f"Number of unique Quasi-Identifier combinations: "
+                f"-Highlight-{unique_qid_rows} ({unq_qid_percent}% of all target records)-Highlight-",
                 _type=AttachmentType.String,
             )
             # Apparent match distribution plot as attachment
@@ -160,6 +170,7 @@ def privacy_score(
                         quasi_list_atch,
                         rec_mat_para_a,
                         total_quasi_matched,
+                        unique_qid_attachment,
                         adp_para_a,
                         adp,
                     ],
