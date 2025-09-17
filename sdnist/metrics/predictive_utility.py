@@ -7,10 +7,12 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import accuracy_score, f1_score
+from sklearn.base import clone
 import matplotlib.pyplot as plt
 
 from sdnist.utils import *
 import sdnist.strs as strs
+from sdnist.metrics.predictive_utility_helpers import FeatureCombiner, PredictiveAnalyzer
 
 
 class PredictiveUtility:
@@ -36,9 +38,44 @@ class PredictiveUtility:
         
         # Results storage
         self.results = {}
+        self.loan_results = {}  # Store loan analysis results separately
+        self.combined_feature_results = {}  # Store results for all combined features
         self.report_data = {}
         
+        # Model parameters
+        self.model_params = {
+            'max_iter': 1,
+            'solver': 'lbfgs',
+            'class_weight': 'balanced',
+            'n_jobs': -1,
+            'random_state': 42
+        }
+        
+        # Initialize helper classes
+        self.feature_combiner = FeatureCombiner()
+        self.analyzer = PredictiveAnalyzer()
+        
         self._setup()
+    
+    def compute_score(self):
+        """Main computation method - runs all analyses"""
+        
+        # Section 1: Individual SC features analysis
+        # self._analyze_individual_sc_features()
+        
+        # Section 2: Combined feature analyses (includes original loan feature)
+        self._analyze_combined_features()
+        
+        # Section 3: Create visualizations
+        # self._create_accuracy_grid()
+        # self._create_plot()
+        self._create_summary_degradation_grid()
+        self._create_combined_feature_visualizations()
+        
+        # Section 4: Prepare report data
+        self._prepare_report_data()
+        
+        return self.results
     
     def _get_feature_description(self, feature):
         """Get feature description from data dictionary"""
@@ -72,14 +109,123 @@ class PredictiveUtility:
             transformers.append(('scaler', StandardScaler(), continuous_features))
         
         if categorical_features:
-            transformers.append(('onehot', OneHotEncoder(sparse_output=False, handle_unknown='error'), categorical_features))
+            transformers.append(('onehot', OneHotEncoder(sparse_output=False, handle_unknown='error', drop='if_binary'), categorical_features))
         
         if not transformers:
             return None
         
         return ColumnTransformer(transformers=transformers, remainder='passthrough')
     
-    def compute_score(self):
+    def _analyze_combined_features(self):
+        """Analyze all combined feature combinations using the helper module."""
+        print('Processing combined feature analyses...')
+        
+        # Get X features (all non-SC columns)
+        X_columns = [col for col in self.target.columns 
+                    if col not in self.SC_TARGETS]
+        
+        X_target = self.target[X_columns]
+        X_synthetic = self.synthetic[X_columns]
+        
+        # Define feature combinations to analyze
+        feature_combinations = {
+            'Original_Loan_Feature': self.feature_combiner.create_original_loan_feature,
+            'Self_Funded_vs_External': self.feature_combiner.create_self_funded_vs_external,
+            'Funding_Risk_Profile': self.feature_combiner.create_funding_risk_profile,
+            'Government_Support': self.feature_combiner.create_government_support,
+            'Funding_Complexity': self.feature_combiner.create_funding_complexity,
+            'Bootstrap_vs_Institutional': self.feature_combiner.create_bootstrap_vs_institutional,
+            'Formal_vs_Informal': self.feature_combiner.create_formal_vs_informal,
+            'Credit_Dependency': self.feature_combiner.create_credit_dependency
+        }
+        
+        # Analyze each combination for overall and by SEX1 subgroups
+        for feature_name, combiner_func in feature_combinations.items():
+            try:
+                # Overall analysis (all data)
+                y_target_combined = combiner_func(self.target)
+                y_synthetic_combined = combiner_func(self.synthetic)
+                
+                # Create fresh preprocessors for each feature combination
+                base_preprocessor = self._create_preprocessor(X_columns)
+                preprocessor_target = clone(base_preprocessor) if base_preprocessor else None
+
+                # Run overall analysis using shared model parameters
+                results = self.analyzer.analyze_feature_combination(
+                    X_target=X_target,
+                    X_synthetic=X_synthetic,
+                    y_target=y_target_combined,
+                    y_synthetic=y_synthetic_combined,
+                    feature_name=feature_name,
+                    preprocessor_target=preprocessor_target,
+                    model_params=self.model_params,
+                    subgroup_name=None
+                )
+                
+                self.combined_feature_results[feature_name] = results
+                self.analyzer.print_summary(feature_name)
+                
+                # Now analyze by SEX1 subgroups if SEX1 is in the data
+                if 'SEX1' in self.target.columns and 'SEX1' in self.synthetic.columns:
+                    # Get unique SEX1 values
+                    sex_values = self.target['SEX1'].unique()
+                    
+                    for sex_value in sex_values:
+                        try:
+                            # Filter data by SEX1
+                            target_sex_mask = self.target['SEX1'] == sex_value
+                            synthetic_sex_mask = self.synthetic['SEX1'] == sex_value
+                            
+                            # Get subgroup data
+                            target_subgroup = self.target[target_sex_mask]
+                            synthetic_subgroup = self.synthetic[synthetic_sex_mask]
+                            
+                            # Skip if subgroup too small
+                            if len(target_subgroup) < 100 or len(synthetic_subgroup) < 100:
+                                print(f"Skipping {feature_name} for SEX1={sex_value}: insufficient data")
+                                continue
+                            
+                            # Create combined features for subgroup
+                            y_target_subgroup = combiner_func(target_subgroup)
+                            y_synthetic_subgroup = combiner_func(synthetic_subgroup)
+                            
+                            # Get X data for subgroup
+                            X_target_subgroup = X_target[target_sex_mask]
+                            X_synthetic_subgroup = X_synthetic[synthetic_sex_mask]
+                            
+                            # Create fresh preprocessors for subgroup
+                            base_preprocessor_sub = self._create_preprocessor(X_columns)
+                            preprocessor_target_sub = clone(base_preprocessor_sub) if base_preprocessor_sub else None
+
+                            # Run subgroup analysis
+                            subgroup_name = f"SEX1={sex_value}"
+                            results_subgroup = self.analyzer.analyze_feature_combination(
+                                X_target=X_target_subgroup,
+                                X_synthetic=X_synthetic_subgroup,
+                                y_target=y_target_subgroup,
+                                y_synthetic=y_synthetic_subgroup,
+                                feature_name=feature_name,
+                                preprocessor_target=preprocessor_target_sub,
+                                model_params=self.model_params,
+                                subgroup_name=subgroup_name
+                            )
+                            
+                            # Store subgroup results with special key
+                            subgroup_key = f"{feature_name}_SEX1_{sex_value}"
+                            self.combined_feature_results[subgroup_key] = results_subgroup
+                            self.analyzer.print_summary(feature_name)
+                            
+                        except Exception as e:
+                            print(f"Error analyzing {feature_name} for SEX1={sex_value}: {e}")
+                            continue
+                
+            except Exception as e:
+                print(f"Error analyzing {feature_name}: {e}")
+                continue
+
+    
+    def _analyze_individual_sc_features(self):
+        """Analyze individual SC features using logistic regression"""
         # Get predictor columns (all non-SC columns)
         X_columns = [col for col in self.target.columns 
                     if col not in self.SC_TARGETS]
@@ -126,12 +272,8 @@ class PredictiveUtility:
                 X_s_train_processed = X_s_train.values
                 X_s_test_processed = X_s_test.values
 
-            hyper_params = {
-                'max_iter': 100,
-                'solver': 'lbfgs',
-                'n_jobs': -1,
-                'random_state': 42
-            }
+            # Use shared model parameters
+            hyper_params = self.model_params.copy()
             # Train models
             model_target = LogisticRegression(**hyper_params)
             model_target.fit(X_t_train_processed, y_t_train)
@@ -159,15 +301,6 @@ class PredictiveUtility:
                 'acc_synthetic_on_target': acc_synthetic_on_target,
                 'degradation': acc_target - acc_synthetic_on_target  # Compare on same test set
             }
-        
-        # Create visualizations
-        self._create_accuracy_grid()
-        self._create_plot()
-        
-        # Prepare report data
-        self._prepare_report_data()
-        
-        return self.results
     
     def _create_accuracy_grid(self):
         """Create accuracy grid chart with target features on y-axis and accuracy comparisons on x-axis"""
@@ -361,23 +494,431 @@ class PredictiveUtility:
         
         return [plot_path]
     
-    def _prepare_report_data(self):
-        # Summary statistics
-        accuracies_target = [r['acc_target'] for r in self.results.values()]
-        accuracies_synthetic = [r['acc_synthetic_on_target'] for r in self.results.values()]
-        degradations = [r['degradation'] for r in self.results.values()]
+    def _create_loan_visualizations(self):
+        """Create visualizations for the combined loan feature analysis"""
+        if not self.loan_results:
+            return
         
-        self.report_data = {
-            'features_evaluated': list(self.results.keys()),
-            'mean_target_accuracy': np.mean(accuracies_target),
-            'mean_synthetic_accuracy': np.mean(accuracies_synthetic),
-            'mean_degradation': np.mean(degradations),
-            'individual_results': {
-                k: {
-                    'accuracy_target': v['acc_target'],
-                    'accuracy_synthetic': v['acc_synthetic_on_target'],
-                    'degradation': v['degradation']
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+        
+        # Get data from loan results
+        actual = self.loan_results['actual_target']
+        pred_target = self.loan_results['pred_target_on_target']
+        pred_synthetic = self.loan_results['pred_synthetic_on_target']
+        
+        # Get unique labels
+        labels = sorted(set(actual) | set(pred_target) | set(pred_synthetic))
+        label_map = {'no_loan': 'No Loan', 
+                    'govt_loan': 'Govt Loan',
+                    'govt_guaranteed_bank_loan': 'Govt Guaranteed',
+                    'bank_loan': 'Bank Loan',
+                    'family_loan': 'Family Loan'}
+        display_labels = [label_map.get(l, l) for l in labels]
+        
+        # Count occurrences
+        actual_counts = [np.sum(actual == label) for label in labels]
+        target_counts = [np.sum(pred_target == label) for label in labels]
+        synthetic_counts = [np.sum(pred_synthetic == label) for label in labels]
+        
+        # First subplot: Distribution comparison
+        x = np.arange(len(labels))
+        width = 0.25
+        
+        ax1.bar(x - width, actual_counts, width, label='Actual', color='#ff9500', alpha=0.8)
+        ax1.bar(x, target_counts, width, label='Target Model', color='#5373d8', alpha=0.8)
+        ax1.bar(x + width, synthetic_counts, width, label='Deidentified Model', color='#4eb07a', alpha=0.8)
+        
+        ax1.set_xlabel('Loan Type', fontsize=11)
+        ax1.set_ylabel('Count', fontsize=11)
+        ax1.set_title(f'Combined Loan Feature - Distribution Comparison\n'
+                     f'Target Acc={self.loan_results["acc_target"]:.3f}, '
+                     f'Deid Acc={self.loan_results["acc_synthetic_on_target"]:.3f}',
+                     fontsize=12)
+        ax1.set_xticks(x)
+        ax1.set_xticklabels(display_labels, rotation=45, ha='right')
+        ax1.legend(fontsize=9)
+        ax1.grid(axis='y', alpha=0.3)
+        
+        # Add value labels on bars
+        for i, (a, t, s) in enumerate(zip(actual_counts, target_counts, synthetic_counts)):
+            if a > 0:
+                ax1.text(i - width, a, str(a), ha='center', va='bottom', fontsize=8)
+            if t > 0:
+                ax1.text(i, t, str(t), ha='center', va='bottom', fontsize=8)
+            if s > 0:
+                ax1.text(i + width, s, str(s), ha='center', va='bottom', fontsize=8)
+        
+        # Second subplot: Accuracy metrics comparison
+        metrics = ['Accuracy', 'F1-Score']
+        target_metrics = [self.loan_results['acc_target'], self.loan_results['f1_target']]
+        synthetic_metrics = [self.loan_results['acc_synthetic_on_target'], self.loan_results['f1_synthetic']]
+        
+        x2 = np.arange(len(metrics))
+        width2 = 0.35
+        
+        bars1 = ax2.bar(x2 - width2/2, target_metrics, width2, label='Target Model', color='#5373d8', alpha=0.8)
+        bars2 = ax2.bar(x2 + width2/2, synthetic_metrics, width2, label='Deidentified Model', color='#4eb07a', alpha=0.8)
+        
+        ax2.set_ylabel('Score', fontsize=11)
+        ax2.set_title('Loan Feature - Model Performance Metrics', fontsize=12)
+        ax2.set_xticks(x2)
+        ax2.set_xticklabels(metrics)
+        ax2.legend(fontsize=9)
+        ax2.set_ylim(0, 1.1)
+        ax2.grid(axis='y', alpha=0.3)
+        
+        # Add value labels on bars
+        for bars in [bars1, bars2]:
+            for bar in bars:
+                height = bar.get_height()
+                ax2.text(bar.get_x() + bar.get_width()/2., height,
+                        f'{height:.3f}', ha='center', va='bottom', fontsize=9)
+        
+        # Add degradation text
+        ax2.text(0.5, 0.95, 
+                f'Accuracy Degradation: {self.loan_results["degradation"]:.3f}\n'
+                f'F1-Score Degradation: {self.loan_results["f1_degradation"]:.3f}',
+                transform=ax2.transAxes, ha='center', va='top',
+                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
+                fontsize=9)
+        
+        fig.suptitle('Combined Loan Feature - Predictive Utility Analysis', fontsize=14, fontweight='bold')
+        fig.tight_layout()
+        
+        # Save plot
+        loan_plot_path = Path(self.o_path, 'predictive_utility_loan_feature.png')
+        fig.savefig(loan_plot_path, dpi=100, bbox_inches='tight')
+        plt.close(fig)
+        
+        return loan_plot_path
+    
+    def _create_summary_degradation_grid(self):
+        """Create a summary grid showing accuracy degradation for all features across subgroups."""
+        print(f"\nCreating summary degradation grid...")
+        if not self.combined_feature_results:
+            print("No combined feature results available for summary grid")
+            return
+        
+        # Prepare data for the grid
+        base_features = []
+        overall_degradations = []
+        male_degradations = []
+        female_degradations = []
+        
+        # Get unique base features (exclude SEX1 variants)
+        base_feature_set = set()
+        for key in self.combined_feature_results.keys():
+            if '_SEX1_' not in key:
+                base_feature_set.add(key)
+        
+        # Sort features for consistent display
+        for feature in sorted(base_feature_set):
+            base_features.append(feature.replace('_', ' '))
+            
+            # Get overall degradation
+            if feature in self.combined_feature_results:
+                overall_degradations.append(
+                    self.combined_feature_results[feature].get('balanced_accuracy_degradation', 0) * 100
+                )
+            else:
+                overall_degradations.append(0)
+            
+            # Get male (SEX1=1) degradation
+            male_key = f"{feature}_SEX1_1"
+            if male_key in self.combined_feature_results:
+                male_degradations.append(
+                    self.combined_feature_results[male_key].get('balanced_accuracy_degradation', 0) * 100
+                )
+            else:
+                male_degradations.append(0)
+            
+            # Get female (SEX1=2) degradation
+            female_key = f"{feature}_SEX1_2"
+            if female_key in self.combined_feature_results:
+                female_degradations.append(
+                    self.combined_feature_results[female_key].get('balanced_accuracy_degradation', 0) * 100
+                )
+            else:
+                female_degradations.append(0)
+        
+        # Create the grid chart
+        fig, ax = plt.subplots(figsize=(8, 6))
+        
+        # Prepare data matrix (features x subgroups)
+        degradation_matrix = np.array([overall_degradations, male_degradations, female_degradations]).T
+        
+        # Create heatmap
+        im = ax.imshow(degradation_matrix, cmap='RdYlGn_r', aspect='auto', vmin=-10, vmax=20)
+        
+        # Set ticks and labels
+        ax.set_xticks([0, 1, 2])
+        ax.set_xticklabels(['Overall', 'Male', 'Female'])
+        ax.set_yticks(range(len(base_features)))
+        ax.set_yticklabels(base_features)
+        
+        # Add title and labels
+        ax.set_title('Predictive Utility Degradation Summary\n(Target - Deidentified) %', fontsize=12, pad=10)
+        ax.set_xlabel('Population Group', fontsize=10)
+        ax.set_ylabel('Feature Combination', fontsize=10)
+        
+        # Add text annotations
+        for i in range(len(base_features)):
+            for j in range(3):
+                value = degradation_matrix[i, j]
+                color = 'white' if abs(value) > 10 else 'black'
+                ax.text(j, i, f'{value:.1f}%', ha='center', va='center', 
+                       color=color, fontsize=9, fontweight='bold')
+        
+        # Add colorbar
+        cbar = plt.colorbar(im, ax=ax)
+        cbar.set_label('Degradation %', rotation=270, labelpad=20)
+        
+        # Adjust layout
+        plt.tight_layout()
+        
+        # Save plot
+        plot_path = Path(self.o_path, 'summary_degradation_grid.png')
+        print(f"Saving summary grid to: {plot_path}")
+        fig.savefig(plot_path, dpi=100, bbox_inches='tight')
+        plt.close(fig)
+        
+        print(f"Summary degradation grid created successfully at {plot_path}")
+        
+        return plot_path
+    
+    def _create_combined_feature_visualizations(self):
+        """Create visualizations for all combined feature analyses."""
+        if not self.combined_feature_results:
+            return []
+        
+        # Debug: Show what features we have
+        print(f"\nCreating plots for {len(self.combined_feature_results)} feature analyses:")
+        for key in sorted(self.combined_feature_results.keys()):
+            print(f"  - {key}")
+        
+        plot_paths = []
+        
+        for feature_name, results in self.combined_feature_results.items():
+            try:
+                plot_path = self._create_combined_feature_plot(feature_name, results)
+                if plot_path:
+                    plot_paths.append(plot_path)
+            except Exception as e:
+                print(f"Error creating plot for {feature_name}: {e}")
+                continue
+        
+        return plot_paths
+    
+    def _create_combined_feature_plot(self, feature_name: str, results: dict):
+        """Create visualization for a specific combined feature with confusion matrix analysis."""
+        # Check if this is a subgroup analysis
+        subgroup_name = results.get('subgroup_name', None)
+        
+        # Clean feature name - remove SEX1 suffix if present for plotting
+        if '_SEX1_' in feature_name:
+            base_feature_name = feature_name.rsplit('_SEX1_', 1)[0]
+        else:
+            base_feature_name = feature_name
+        
+        # Figure with 1 row, 3 columns (distribution + confusion matrix + degradation)
+        fig, axes = plt.subplots(1, 3, figsize=(12, 3.5))
+        
+        # Get data
+        actual = results['actual_target']
+        pred_target = results['pred_target_on_target'] 
+        pred_synthetic = results['pred_synthetic_on_target']
+        
+        # Get unique labels and their display names
+        labels = sorted(set(actual) | set(pred_target) | set(pred_synthetic))
+        
+        # Count occurrences
+        actual_counts = [np.sum(actual == label) for label in labels]
+        target_counts = [np.sum(pred_target == label) for label in labels]
+        synthetic_counts = [np.sum(pred_synthetic == label) for label in labels]
+        
+        # Plot 1: Distribution comparison
+        x = np.arange(len(labels))
+        width = 0.25
+        
+        axes[0].bar(x - width, actual_counts, width, label='Actual', color='#ff9500', alpha=0.8)
+        axes[0].bar(x, target_counts, width, label='Target Model', color='#5373d8', alpha=0.8)
+        axes[0].bar(x + width, synthetic_counts, width, label='Synthetic Model', color='#4eb07a', alpha=0.8)
+        
+        axes[0].set_xlabel('Category', fontsize=9)
+        axes[0].set_ylabel('Count', fontsize=9)
+        axes[0].set_title('Distribution Comparison', fontsize=10)
+        axes[0].set_xticks(x)
+        axes[0].set_xticklabels(labels, rotation=45, ha='right', fontsize=8)
+        axes[0].legend(fontsize=8)
+        axes[0].grid(axis='y', alpha=0.3)
+        axes[0].tick_params(axis='both', which='major', labelsize=8)
+        
+        # Get y-axis max for matching scales
+        y_max = max(max(actual_counts), max(target_counts), max(synthetic_counts)) * 1.1
+        
+        # Plot 2: Confusion Matrix comparison 
+        cm_target = np.array(results['confusion_matrix_target'])
+        cm_synthetic = np.array(results['confusion_matrix_synthetic'])
+        
+        # For binary classification, extract TP, TN, FP, FN
+        if cm_target.shape == (2, 2):
+            # Binary classification confusion matrix format:
+            # [[TN, FP],
+            #  [FN, TP]]
+            target_metrics = [cm_target[1,1], cm_target[0,0], cm_target[0,1], cm_target[1,0]]  # TP, TN, FP, FN
+            synthetic_metrics = [cm_synthetic[1,1], cm_synthetic[0,0], cm_synthetic[0,1], cm_synthetic[1,0]]  # TP, TN, FP, FN
+            cm_labels = ['True +', 'True -', 'False +', 'False -']
+        else:
+            # Multi-class: show diagonal (correct) vs off-diagonal (incorrect) totals
+            target_correct = np.diag(cm_target).sum()
+            target_incorrect = cm_target.sum() - target_correct
+            synthetic_correct = np.diag(cm_synthetic).sum()
+            synthetic_incorrect = cm_synthetic.sum() - synthetic_correct
+            target_metrics = [target_correct, target_incorrect]
+            synthetic_metrics = [synthetic_correct, synthetic_incorrect]
+            cm_labels = ['Correct', 'Incorrect']
+        
+        x2 = np.arange(len(cm_labels))
+        width2 = 0.35
+        
+        bars1 = axes[1].bar(x2 - width2/2, target_metrics, width2, label='Target Model', color='#5373d8', alpha=0.8)
+        bars2 = axes[1].bar(x2 + width2/2, synthetic_metrics, width2, label='Synthetic Model', color='#4eb07a', alpha=0.8)
+        
+        axes[1].set_ylabel('Count', fontsize=9)
+        axes[1].set_title('Confusion Matrix', fontsize=10)
+        axes[1].set_xticks(x2)
+        axes[1].set_xticklabels(cm_labels, fontsize=8)
+        axes[1].legend(fontsize=8)
+        axes[1].grid(axis='y', alpha=0.3)
+        axes[1].tick_params(axis='both', which='major', labelsize=8)
+        
+        # Match y-axis range with first chart
+        axes[1].set_ylim(0, y_max)
+        
+        # No value labels on bars for cleaner look
+        
+        # Get balanced accuracy values from results
+        bal_acc_target = results['balanced_accuracy_target']
+        bal_acc_synthetic = results['balanced_accuracy_synthetic']
+        
+        # Plot 3: Per-category degradation percentages
+        # Calculate degradation for each category/label
+        target_degradations = []
+        synthetic_degradations = []
+        
+        for label in labels:
+            # Count correct predictions for this label
+            actual_label_mask = actual == label
+            if np.sum(actual_label_mask) > 0:
+                # Target model accuracy for this label
+                target_correct = np.sum((pred_target == label) & actual_label_mask)
+                target_acc = target_correct / np.sum(actual_label_mask)
+                target_deg = (1.0 - target_acc) * 100
+                
+                # Synthetic model accuracy for this label
+                synthetic_correct = np.sum((pred_synthetic == label) & actual_label_mask)
+                synthetic_acc = synthetic_correct / np.sum(actual_label_mask)
+                synthetic_deg = (1.0 - synthetic_acc) * 100
+            else:
+                target_deg = 0
+                synthetic_deg = 0
+            
+            target_degradations.append(target_deg)
+            synthetic_degradations.append(synthetic_deg)
+        
+        # Plot grouped bars for each category
+        x3 = np.arange(len(labels))
+        width3 = 0.35  # Bar width
+        
+        bars3_target = axes[2].bar(x3 - width3/2, target_degradations, width3, 
+                                   label='Target Model', color='#5373d8', alpha=0.8)
+        bars3_synthetic = axes[2].bar(x3 + width3/2, synthetic_degradations, width3, 
+                                      label='Deid Model', color='#4eb07a', alpha=0.8)
+        
+        axes[2].axhline(y=0, color='black', linestyle='-', linewidth=0.8)
+        axes[2].set_ylabel('Error Rate %', fontsize=9)
+        axes[2].set_title('Per-Category Error Rates', fontsize=10)
+        axes[2].set_xticks(x3)
+        axes[2].set_xticklabels(labels, rotation=45, ha='right', fontsize=8)
+        axes[2].legend(fontsize=8)
+        axes[2].grid(axis='y', alpha=0.3)
+        axes[2].tick_params(axis='both', which='major', labelsize=8)
+        
+        # No value labels on bars for cleaner look
+        
+        # Fix y-axis range to 0-100
+        axes[2].set_ylim(0, 100)
+        
+        # Add balanced accuracy info to main title
+        if subgroup_name:
+            title = f'{base_feature_name} ({subgroup_name}) | Bal.Acc: Target={bal_acc_target:.3f}, Deid={bal_acc_synthetic:.3f}, Δ={bal_acc_target - bal_acc_synthetic:+.3f}'
+        else:
+            title = f'{base_feature_name} | Bal.Acc: Target={bal_acc_target:.3f}, Deid={bal_acc_synthetic:.3f}, Δ={bal_acc_target - bal_acc_synthetic:+.3f}'
+        fig.suptitle(title, fontsize=10, y=1.02)
+        
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.88)  # Make more room for suptitle
+        
+        # Save plot with appropriate filename
+        if subgroup_name:
+            # Extract SEX value from subgroup_name (e.g., "SEX1=1" -> "1")
+            sex_value = subgroup_name.split('=')[1] if '=' in subgroup_name else subgroup_name
+            plot_filename = f'combined_feature_{base_feature_name.lower()}_sex{sex_value}.png'
+        else:
+            plot_filename = f'combined_feature_{base_feature_name.lower()}.png'
+        plot_path = Path(self.o_path, plot_filename)
+        fig.savefig(plot_path, dpi=100, bbox_inches='tight')
+        plt.close(fig)
+        
+        return plot_path
+    
+    def _prepare_report_data(self):
+        # Handle case where individual results might be empty
+        if self.results:
+            # Summary statistics for individual features
+            accuracies_target = [r['acc_target'] for r in self.results.values()]
+            accuracies_synthetic = [r['acc_synthetic_on_target'] for r in self.results.values()]
+            degradations = [r['degradation'] for r in self.results.values()]
+            
+            self.report_data = {
+                'features_evaluated': list(self.results.keys()),
+                'mean_target_accuracy': np.mean(accuracies_target),
+                'mean_synthetic_accuracy': np.mean(accuracies_synthetic),
+                'mean_degradation': np.mean(degradations),
+                'individual_results': {
+                    k: {
+                        'accuracy_target': v['acc_target'],
+                        'accuracy_synthetic': v['acc_synthetic_on_target'],
+                        'degradation': v['degradation']
+                    }
+                    for k, v in self.results.items()
                 }
-                for k, v in self.results.items()
             }
-        }
+        else:
+            # No individual results, just initialize base structure
+            self.report_data = {
+                'features_evaluated': [],
+                'mean_target_accuracy': 0,
+                'mean_synthetic_accuracy': 0,
+                'mean_degradation': 0,
+                'individual_results': {}
+            }
+        
+        # Add combined feature analyses if available
+        if self.combined_feature_results:
+            self.report_data['combined_feature_analyses'] = {}
+            for feature_name, results in self.combined_feature_results.items():
+                # Ensure all values are native Python types for JSON serialization
+                self.report_data['combined_feature_analyses'][feature_name] = {
+                    'accuracy_target': float(results.get('accuracy_target', 0)),
+                    'accuracy_synthetic': float(results.get('accuracy_synthetic', 0)),
+                    'balanced_accuracy_target': float(results.get('balanced_accuracy_target', 0)),
+                    'balanced_accuracy_synthetic': float(results.get('balanced_accuracy_synthetic', 0)),
+                    'f1_target': float(results.get('f1_target', 0)),
+                    'f1_synthetic': float(results.get('f1_synthetic', 0)),
+                    'accuracy_degradation': float(results.get('accuracy_degradation', 0)),
+                    'balanced_accuracy_degradation': float(results.get('balanced_accuracy_degradation', 0)),
+                    'f1_degradation': float(results.get('f1_degradation', 0)),
+                    'class_distribution': {str(k): int(v) for k, v in results.get('class_distribution', {}).items()},
+                    'is_multiclass': bool(results.get('is_multiclass', False))
+                }
