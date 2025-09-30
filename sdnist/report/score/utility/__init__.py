@@ -34,13 +34,6 @@ def utility_score(dataset: Dataset, ui_data: ReportUIData, report_data: ReportDa
     rd = report_data
 
     kmr = None
-    if 'PredictiveUtility' in metrics:
-        log.msg('Predictive Utility', level=3)
-        pur = PredictiveUtilityReport(ds, r_ui_d, rd)
-        pur.compute()
-        pur.add_to_ui()
-        log.end_msg()
-
     if 'Kmarginal' in metrics:
         log.msg('Kmarginal', level=3)
         kmr = KMarginalReport(ds, r_ui_d, rd)
@@ -60,6 +53,13 @@ def utility_score(dataset: Dataset, ui_data: ReportUIData, report_data: ReportDa
         corr_report = CorrelationsReport(ds, r_ui_d, rd)
         corr_report.compute()
         corr_report.add_to_ui()
+        log.end_msg()
+
+    if 'PredictiveUtility' in metrics:
+        log.msg('Predictive Utility', level=3)
+        pur = PredictiveUtilityReport(ds, r_ui_d, rd)
+        pur.compute()
+        pur.add_to_ui()
         log.end_msg()
 
     if 'Linear Regression' in metrics:
