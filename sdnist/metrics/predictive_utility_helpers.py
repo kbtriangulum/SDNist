@@ -213,23 +213,88 @@ class FeatureCombiner:
         
         return loan_feature
     
-    @staticmethod 
+    @staticmethod
     def create_credit_dependency(df: pd.DataFrame) -> pd.Series:
         """
         Create credit dependency indicator.
-        
+
         Args:
             df: DataFrame containing SC features
-            
+
         Returns:
             Series with credit dependency categories
         """
         has_credit_risk = (df.get('SCCREDIT', 0) == 1) | (df.get('SCEQUITY', 0) == 1)
-        
+
         result = pd.Series(['no_credit_risk'] * len(df), index=df.index)
         result[has_credit_risk] = 'has_credit_risk'
-        
+
         return result
+
+    @staticmethod
+    def create_scgovtloan_individual(df: pd.DataFrame) -> pd.Series:
+        """
+        Create feature using only SCGOVTLOAN column as target.
+
+        Args:
+            df: DataFrame containing SC features
+
+        Returns:
+            Series with SCGOVTLOAN values
+        """
+        return df['SCGOVTLOAN'].copy()
+
+    @staticmethod
+    def create_scgovtguar_individual(df: pd.DataFrame) -> pd.Series:
+        """
+        Create feature using only SCGOVTGUAR column as target.
+
+        Args:
+            df: DataFrame containing SC features
+
+        Returns:
+            Series with SCGOVTGUAR values
+        """
+        return df['SCGOVTGUAR'].copy()
+
+    @staticmethod
+    def create_scbankloan_individual(df: pd.DataFrame) -> pd.Series:
+        """
+        Create feature using only SCBANKLOAN column as target.
+
+        Args:
+            df: DataFrame containing SC features
+
+        Returns:
+            Series with SCBANKLOAN values
+        """
+        return df['SCBANKLOAN'].copy()
+
+    @staticmethod
+    def create_scfamloan_individual(df: pd.DataFrame) -> pd.Series:
+        """
+        Create feature using only SCFAMLOAN column as target.
+
+        Args:
+            df: DataFrame containing SC features
+
+        Returns:
+            Series with SCFAMLOAN values
+        """
+        return df['SCFAMLOAN'].copy()
+
+    @staticmethod
+    def create_scgrant_individual(df: pd.DataFrame) -> pd.Series:
+        """
+        Create feature using only SCGRANT column as target.
+
+        Args:
+            df: DataFrame containing SC features
+
+        Returns:
+            Series with SCGRANT values
+        """
+        return df['SCGRANT'].copy()
 
 
 class PredictiveAnalyzer:

@@ -187,7 +187,8 @@ class PredictiveUtilityReport:
         if has_combined_results:
             # Calculate overall statistics from combined features (balanced accuracy only)
             # Exclude subgroup results from overall statistics
-            overall_results = {k: v for k, v in self.metric.combined_feature_results.items() if '_SEX1_' not in k}
+            overall_results = {k: v for k, v in self.metric.combined_feature_results.items() 
+                             if '_SEX1_' not in k and '_RACE1_Transformed_' not in k}
             all_target_acc = [r.get('balanced_accuracy_target', 0) for r in overall_results.values()]
             all_synthetic_acc = [r.get('balanced_accuracy_synthetic', 0) for r in overall_results.values()]
             all_degradation = [r.get('balanced_accuracy_degradation', 0) for r in overall_results.values()]
@@ -213,7 +214,17 @@ class PredictiveUtilityReport:
                 )
         
         # Note: Old individual plots removed - now using combined feature analyses only
-        
+        # Add accuracy grid plot first
+        grid_path = Path(self.metric.o_path, 'predictive_utility_accuracy_grid.png')
+        if grid_path.exists():
+            rel_path = "/".join(list(grid_path.parts)[-2:])
+            attachments.append(
+                Attachment(
+                    name='Target and Deid Models Accuracies',
+                    _data=[{strs.IMAGE_NAME: 'predictive_utility_accuracy_grid', strs.PATH: rel_path}],
+                    _type=AttachmentType.ImageLinks
+                )
+            )
         # Add combined feature analyses if available
         if hasattr(self.metric, 'combined_feature_results') and self.metric.combined_feature_results:
             # Add section header for combined analyses
@@ -242,56 +253,36 @@ class PredictiveUtilityReport:
             else:
                 print(f"Warning: Summary grid not found at {summary_grid_path}")
             
-            # Add summary of all combined features (balanced accuracy only)
-            combined_summary_lines = []
+            ## Add summary of all combined features (balanced accuracy only)
+            # combined_summary_lines = []
             
             # Process overall features first
-            for feature_name, results in self.metric.combined_feature_results.items():
-                # Skip subgroup results in main summary
-                if '_SEX1_' in feature_name:
-                    continue
-                    
-                bal_acc_target = results.get('balanced_accuracy_target', 0) 
-                bal_acc_synthetic = results.get('balanced_accuracy_synthetic', 0)
-                degradation = results.get('balanced_accuracy_degradation', 0)
-                
-                combined_summary_lines.append(
-                    f"<b>{feature_name.replace('_', ' ')} (Overall):</b><br>"
-                    f"  Balanced Acc: {bal_acc_target:.3f} → {bal_acc_synthetic:.3f} (Δ{degradation:+.3f})<br>"
-                )
-                
-                # Add subgroup summaries if they exist
-                # Dynamically find SEX1 subgroup keys
-                sex_subgroups = [(k, k.split('_')[-1]) for k in self.metric.combined_feature_results.keys() 
-                                 if k.startswith(f"{feature_name}_SEX1_")]
-                
-                for subgroup_key, sex_value in sorted(sex_subgroups):
-                    sub_results = self.metric.combined_feature_results[subgroup_key]
-                    sub_bal_acc_target = sub_results.get('balanced_accuracy_target', 0)
-                    sub_bal_acc_synthetic = sub_results.get('balanced_accuracy_synthetic', 0)
-                    sub_degradation = sub_results.get('balanced_accuracy_degradation', 0)
-                    
-                    # Determine sex label based on value
-                    if sex_value == '1' or sex_value == 1:
-                        sex_label = 'Male'
-                    elif sex_value == '2' or sex_value == 2:
-                        sex_label = 'Female'
-                    else:
-                        sex_label = f'SEX1={sex_value}'
-                    
-                    combined_summary_lines.append(
-                        f"    • {sex_label}: {sub_bal_acc_target:.3f} → {sub_bal_acc_synthetic:.3f} (Δ{sub_degradation:+.3f})<br>"
-                    )
+            # for feature_name, results in self.metric.combined_feature_results.items():
+            #     # Skip subgroup results in main summary
+            #     if '_SEX1_' in feature_name or '_RACE1_Transformed_' in feature_name:
+            #         continue
+            #
+            #     bal_acc_target = results.get('balanced_accuracy_target', 0)
+            #     bal_acc_synthetic = results.get('balanced_accuracy_synthetic', 0)
+            #     degradation = results.get('balanced_accuracy_degradation', 0)
+            #
+            #     combined_summary_lines.append(
+            #         f"<b>{feature_name.replace('_', ' ')} (Overall):</b><br>"
+            #         f"  Balanced Acc: {bal_acc_target:.3f} → {bal_acc_synthetic:.3f} (Δ{degradation:+.3f})<br>"
+            #     )
+            #
+            #     # Add demographic subgroup summaries
+            #     self._add_demographic_summaries(feature_name, combined_summary_lines)
             
-            combined_summary = "<br>".join(combined_summary_lines)
-            attachments.append(
-                Attachment(
-                    name=None,
-                    _data=f"Highlight-Score: {combined_summary}",
-                    _type=AttachmentType.String
-                )
-            )
-            
+            # combined_summary = "<br>".join(combined_summary_lines)
+            # attachments.append(
+            #     Attachment(
+            #         name=None,
+            #         _data=f"Highlight-Score: {combined_summary}",
+            #         _type=AttachmentType.String
+            #     )
+            # )
+
             # Add individual plots for each combined feature
             # Organize plots by base feature name
             base_features = set()
@@ -299,6 +290,8 @@ class PredictiveUtilityReport:
                 # Extract base feature name (without SEX1 suffix)
                 if '_SEX1_' in feature_key:
                     base_name = feature_key.rsplit('_SEX1_', 1)[0]
+                elif '_RACE1_Transformed_' in feature_key:
+                    base_name = feature_key.rsplit('_RACE1_Transformed_', 1)[0]
                 else:
                     base_name = feature_key
                 base_features.add(base_name)
@@ -316,57 +309,13 @@ class PredictiveUtilityReport:
                     )
                 
                 # Add overall plot
-                plot_filename = f'combined_feature_{base_feature.lower()}.png'
-                plot_path = Path(self.metric.o_path, plot_filename)
-                
-                if plot_path.exists():
-                    rel_path = "/".join(list(plot_path.parts)[-2:])
-                    display_name = base_feature.replace('_', ' ')
-                    image_name = f'combined_feature_{base_feature.lower()}'
-                    
-                    attachments.append(
-                        Attachment(
-                            name=f'{display_name} Analysis (Overall)',
-                            _data=[{strs.IMAGE_NAME: image_name, strs.PATH: rel_path}],
-                            _type=AttachmentType.ImageLinks
-                        )
-                    )
-                else:
-                    print(f"Warning: Plot not found for {base_feature} at {plot_path}")
-                
-                # Add SEX1 subgroup plots if they exist
-                # Dynamically find SEX1 subgroup results for this base feature
-                sex_subgroups = [(k, k.split('_')[-1]) for k in self.metric.combined_feature_results.keys() 
-                                 if k.startswith(f"{base_feature}_SEX1_")]
-                
-                for subgroup_key, sex_value in sorted(sex_subgroups):
-                    plot_filename = f'combined_feature_{base_feature.lower()}_sex{sex_value}.png'
-                    plot_path = Path(self.metric.o_path, plot_filename)
-                    print(f"Debug: Looking for subgroup plot at {plot_path}")  # Debug line
-                    
-                    if plot_path.exists():
-                        rel_path = "/".join(list(plot_path.parts)[-2:])
-                        display_name = base_feature.replace('_', ' ')
-                        
-                        # Determine sex label based on value
-                        if sex_value == '1' or sex_value == 1:
-                            sex_label = 'Male'
-                        elif sex_value == '2' or sex_value == 2:
-                            sex_label = 'Female'
-                        else:
-                            sex_label = f'SEX1={sex_value}'
-                        
-                        image_name = f'combined_feature_{base_feature.lower()}_sex{sex_value}'
-                        
-                        attachments.append(
-                            Attachment(
-                                name=f'{display_name} Analysis ({sex_label})',
-                                _data=[{strs.IMAGE_NAME: image_name, strs.PATH: rel_path}],
-                                _type=AttachmentType.ImageLinks
-                            )
-                        )
-                    else:
-                        print(f"Warning: Plot not found for {base_feature} SEX1={sex_value} at {plot_path}")
+                self._add_plot_attachment(attachments, base_feature, '', 'Overall')
+                #
+                # # Add SEX1 subgroup plots
+                # self._add_demographic_plots(attachments, base_feature, 'SEX1')
+                #
+                # # Add RACE1_Transformed subgroup plots
+                # self._add_demographic_plots(attachments, base_feature, 'RACE1_Transformed')
         
         # Create packet and add to UI
         print(f"Debug: Creating packet with {len(attachments)} attachments")
@@ -377,3 +326,98 @@ class PredictiveUtilityReport:
         )
         self.r_ui_d.add(packet)
         print(f"Debug: Packet added to UI with attachments")
+    
+    def _get_race_labels(self):
+        """Get race labels from data dictionary or return defaults."""
+        if hasattr(self.metric, 'data_dict') and self.metric.data_dict and 'RACE1_Transformed' in self.metric.data_dict:
+            race_dict_values = self.metric.data_dict.get('RACE1_Transformed', {}).get('values', {})
+            # Convert to string keys for consistency
+            return {str(k): v for k, v in race_dict_values.items()}
+        else:
+            # Fallback to default labels
+            return {
+                '1': 'White', '2': 'Black', '3': 'Asian', 
+                '4': 'Am_Indian', '5': 'Pac_Islander', '6': 'Other'
+            }
+    
+    def _add_demographic_summaries(self, feature_name, combined_summary_lines):
+        """Add demographic subgroup summaries for a feature."""
+        # SEX1 subgroups
+        sex_subgroups = [(k, k.split('_')[-1]) for k in self.metric.combined_feature_results.keys() 
+                         if k.startswith(f"{feature_name}_SEX1_")]
+        
+        for subgroup_key, sex_value in sorted(sex_subgroups):
+            sub_results = self.metric.combined_feature_results[subgroup_key]
+            sub_bal_acc_target = sub_results.get('balanced_accuracy_target', 0)
+            sub_bal_acc_synthetic = sub_results.get('balanced_accuracy_synthetic', 0)
+            sub_degradation = sub_results.get('balanced_accuracy_degradation', 0)
+            
+            sex_label = 'Male' if sex_value == '1' else 'Female' if sex_value == '2' else f'SEX1={sex_value}'
+            combined_summary_lines.append(
+                f"    • {sex_label}: {sub_bal_acc_target:.3f} → {sub_bal_acc_synthetic:.3f} (Δ{sub_degradation:+.3f})<br>"
+            )
+        
+        # RACE1_Transformed subgroups
+        race_subgroups = [(k, k.split('_')[-1]) for k in self.metric.combined_feature_results.keys() 
+                          if k.startswith(f"{feature_name}_RACE1_Transformed_")]
+        
+        # Get race labels from data dictionary
+        race_labels = self._get_race_labels()
+        
+        for subgroup_key, race_value in sorted(race_subgroups):
+            sub_results = self.metric.combined_feature_results[subgroup_key]
+            sub_bal_acc_target = sub_results.get('balanced_accuracy_target', 0)
+            sub_bal_acc_synthetic = sub_results.get('balanced_accuracy_synthetic', 0)
+            sub_degradation = sub_results.get('balanced_accuracy_degradation', 0)
+            
+            race_label = race_labels.get(race_value, f'Race_{race_value}')
+            combined_summary_lines.append(
+                f"    • {race_label}: {sub_bal_acc_target:.3f} → {sub_bal_acc_synthetic:.3f} (Δ{sub_degradation:+.3f})<br>"
+            )
+    
+    def _add_plot_attachment(self, attachments, base_feature, suffix, label):
+        """Add a single plot attachment."""
+        if suffix:
+            plot_filename = f'combined_feature_{base_feature.lower()}_{suffix}.png'
+        else:
+            plot_filename = f'combined_feature_{base_feature.lower()}.png'
+
+        print(plot_filename)
+        plot_path = Path(self.metric.o_path, plot_filename)
+        if plot_path.exists():
+            rel_path = "/".join(list(plot_path.parts)[-2:])
+            display_name = base_feature.replace('_', ' ')
+            image_name = plot_filename.replace('.png', '')
+            
+            attachments.append(
+                Attachment(
+                    name=f'{display_name} Analysis ({label})',
+                    _data=[{strs.IMAGE_NAME: image_name, strs.PATH: rel_path}],
+                    _type=AttachmentType.ImageLinks
+                )
+            )
+        else:
+            print(f"Warning: Plot not found for {base_feature} {label} at {plot_path}")
+    
+    def _add_demographic_plots(self, attachments, base_feature, demographic_col):
+        """Add demographic subgroup plots for a feature."""
+        # Find subgroup results for this demographic
+
+        subgroups = [(k, k.split('_')[-1]) for k in self.metric.combined_feature_results.keys() 
+                     if k.startswith(f"{base_feature}_{demographic_col}_")]
+        
+        # Define labels based on demographic column
+        if demographic_col == 'SEX1':
+            label_map = {'1': 'Male', '2': 'Female'}
+            suffix_template = 'sex{}'
+        elif demographic_col == 'RACE1_Transformed':
+            label_map = self._get_race_labels()
+            suffix_template = 'race1_transformed{}'
+        else:
+            label_map = {}
+            suffix_template = '{}'
+
+        for subgroup_key, demo_value in sorted(subgroups):
+            suffix = suffix_template.format(demo_value)
+            label = label_map.get(demo_value, f'{demographic_col}={demo_value}')
+            self._add_plot_attachment(attachments, base_feature, suffix, label)

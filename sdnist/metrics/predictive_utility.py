@@ -44,7 +44,7 @@ class PredictiveUtility:
         
         # Model parameters
         self.model_params = {
-            'max_iter': 1,
+            'max_iter': 100,
             'solver': 'lbfgs',
             'class_weight': 'balanced',
             'n_jobs': -1,
@@ -61,19 +61,19 @@ class PredictiveUtility:
         """Main computation method - runs all analyses"""
         
         # Section 1: Individual SC features analysis
-        # self._analyze_individual_sc_features()
+        self._analyze_individual_sc_features()
         
         # Section 2: Combined feature analyses (includes original loan feature)
-        self._analyze_combined_features()
+        # self._analyze_combined_features()
         
         # Section 3: Create visualizations
-        # self._create_accuracy_grid()
-        # self._create_plot()
-        self._create_summary_degradation_grid()
-        self._create_combined_feature_visualizations()
+        self._create_accuracy_grid()
+        self._create_plot()
+        # self._create_summary_degradation_grid()
+        # self._create_combined_feature_visualizations()
         
         # Section 4: Prepare report data
-        self._prepare_report_data()
+        # self._prepare_report_data()
         
         return self.results
     
@@ -109,8 +109,8 @@ class PredictiveUtility:
             transformers.append(('scaler', StandardScaler(), continuous_features))
         
         if categorical_features:
-            transformers.append(('onehot', OneHotEncoder(sparse_output=False, handle_unknown='error', drop='if_binary'), categorical_features))
-        
+            transformers.append(('onehot', OneHotEncoder(sparse_output=False, handle_unknown='error'), categorical_features))
+
         if not transformers:
             return None
         
@@ -129,7 +129,12 @@ class PredictiveUtility:
         
         # Define feature combinations to analyze
         feature_combinations = {
-            'Original_Loan_Feature': self.feature_combiner.create_original_loan_feature,
+            'SCGOVTLOAN': self.feature_combiner.create_scgovtloan_individual,
+            'SCGOVTGUAR': self.feature_combiner.create_scgovtguar_individual,
+            'SCBANKLOAN': self.feature_combiner.create_scbankloan_individual,
+            'SCFAMLOAN': self.feature_combiner.create_scfamloan_individual,
+            'SCGRANT': self.feature_combiner.create_scgrant_individual,
+            'Combined_Loan_Feature': self.feature_combiner.create_original_loan_feature,
             'Self_Funded_vs_External': self.feature_combiner.create_self_funded_vs_external,
             'Funding_Risk_Profile': self.feature_combiner.create_funding_risk_profile,
             'Government_Support': self.feature_combiner.create_government_support,
@@ -165,65 +170,91 @@ class PredictiveUtility:
                 self.combined_feature_results[feature_name] = results
                 self.analyzer.print_summary(feature_name)
                 
-                # Now analyze by SEX1 subgroups if SEX1 is in the data
-                if 'SEX1' in self.target.columns and 'SEX1' in self.synthetic.columns:
-                    # Get unique SEX1 values
-                    sex_values = self.target['SEX1'].unique()
-                    
-                    for sex_value in sex_values:
-                        try:
-                            # Filter data by SEX1
-                            target_sex_mask = self.target['SEX1'] == sex_value
-                            synthetic_sex_mask = self.synthetic['SEX1'] == sex_value
-                            
-                            # Get subgroup data
-                            target_subgroup = self.target[target_sex_mask]
-                            synthetic_subgroup = self.synthetic[synthetic_sex_mask]
-                            
-                            # Skip if subgroup too small
-                            if len(target_subgroup) < 100 or len(synthetic_subgroup) < 100:
-                                print(f"Skipping {feature_name} for SEX1={sex_value}: insufficient data")
-                                continue
-                            
-                            # Create combined features for subgroup
-                            y_target_subgroup = combiner_func(target_subgroup)
-                            y_synthetic_subgroup = combiner_func(synthetic_subgroup)
-                            
-                            # Get X data for subgroup
-                            X_target_subgroup = X_target[target_sex_mask]
-                            X_synthetic_subgroup = X_synthetic[synthetic_sex_mask]
-                            
-                            # Create fresh preprocessors for subgroup
-                            base_preprocessor_sub = self._create_preprocessor(X_columns)
-                            preprocessor_target_sub = clone(base_preprocessor_sub) if base_preprocessor_sub else None
-
-                            # Run subgroup analysis
-                            subgroup_name = f"SEX1={sex_value}"
-                            results_subgroup = self.analyzer.analyze_feature_combination(
-                                X_target=X_target_subgroup,
-                                X_synthetic=X_synthetic_subgroup,
-                                y_target=y_target_subgroup,
-                                y_synthetic=y_synthetic_subgroup,
-                                feature_name=feature_name,
-                                preprocessor_target=preprocessor_target_sub,
-                                model_params=self.model_params,
-                                subgroup_name=subgroup_name
-                            )
-                            
-                            # Store subgroup results with special key
-                            subgroup_key = f"{feature_name}_SEX1_{sex_value}"
-                            self.combined_feature_results[subgroup_key] = results_subgroup
-                            self.analyzer.print_summary(feature_name)
-                            
-                        except Exception as e:
-                            print(f"Error analyzing {feature_name} for SEX1={sex_value}: {e}")
-                            continue
+                # Analyze by demographic subgroups
+                self._analyze_demographic_subgroups(feature_name, combiner_func, X_target, X_synthetic, X_columns)
                 
             except Exception as e:
                 print(f"Error analyzing {feature_name}: {e}")
                 continue
-
     
+    def _analyze_demographic_subgroups(self, feature_name, combiner_func, X_target, X_synthetic, X_columns):
+        """Analyze subgroups by SEX1 and RACE1_Transformed."""
+        
+        # SEX1 subgroup analysis
+        if 'SEX1' in self.target.columns and 'SEX1' in self.synthetic.columns:
+            sex_values = self.target['SEX1'].unique()
+            
+            for sex_value in sex_values:
+                try:
+                    self._run_subgroup_analysis(
+                        feature_name, combiner_func, X_target, X_synthetic, X_columns,
+                        'SEX1', sex_value
+                    )
+                except Exception as e:
+                    print(f"Error analyzing {feature_name} for SEX1={sex_value}: {e}")
+                    continue
+        
+        # RACE1_Transformed subgroup analysis
+        if 'RACE1_Transformed' in self.target.columns and 'RACE1_Transformed' in self.synthetic.columns:
+            race_values = self.target['RACE1_Transformed'].unique()
+            
+            for race_value in race_values:
+                try:
+                    self._run_subgroup_analysis(
+                        feature_name, combiner_func, X_target, X_synthetic, X_columns,
+                        'RACE1_Transformed', race_value
+                    )
+                except Exception as e:
+                    print(f"Error analyzing {feature_name} for RACE1_Transformed={race_value}: {e}")
+                    continue
+    
+    def _run_subgroup_analysis(self, feature_name, combiner_func, X_target, X_synthetic, X_columns, 
+                              demographic_col, demographic_value):
+        """Run analysis for a specific demographic subgroup."""
+        # Filter data by demographic column
+        target_mask = self.target[demographic_col] == demographic_value
+        synthetic_mask = self.synthetic[demographic_col] == demographic_value
+        
+        # Get subgroup data
+        target_subgroup = self.target[target_mask]
+        synthetic_subgroup = self.synthetic[synthetic_mask]
+        
+        # Skip if subgroup too small
+        if len(target_subgroup) < 100 or len(synthetic_subgroup) < 100:
+            print(f"Skipping {feature_name} for {demographic_col}={demographic_value}: insufficient data")
+            return
+        
+        # Create combined features for subgroup
+        y_target_subgroup = combiner_func(target_subgroup)
+        y_synthetic_subgroup = combiner_func(synthetic_subgroup)
+        
+        # Get X data for subgroup
+        X_target_subgroup = X_target[target_mask]
+        X_synthetic_subgroup = X_synthetic[synthetic_mask]
+        
+        # Create fresh preprocessors for subgroup
+        base_preprocessor_sub = self._create_preprocessor(X_columns)
+        preprocessor_target_sub = clone(base_preprocessor_sub) if base_preprocessor_sub else None
+        
+        # Run subgroup analysis
+        subgroup_name = f"{demographic_col}={demographic_value}"
+        results_subgroup = self.analyzer.analyze_feature_combination(
+            X_target=X_target_subgroup,
+            X_synthetic=X_synthetic_subgroup,
+            y_target=y_target_subgroup,
+            y_synthetic=y_synthetic_subgroup,
+            feature_name=feature_name,
+            preprocessor_target=preprocessor_target_sub,
+            model_params=self.model_params,
+            subgroup_name=subgroup_name
+        )
+        
+        # Store subgroup results with special key
+        subgroup_key = f"{feature_name}_{demographic_col}_{demographic_value}"
+        self.combined_feature_results[subgroup_key] = results_subgroup
+        self.analyzer.print_summary(feature_name)
+
+
     def _analyze_individual_sc_features(self):
         """Analyze individual SC features using logistic regression"""
         # Get predictor columns (all non-SC columns)
@@ -598,61 +629,87 @@ class PredictiveUtility:
         if not self.combined_feature_results:
             print("No combined feature results available for summary grid")
             return
-        
-        # Prepare data for the grid
+
+        # Define the feature order (same as in feature_combinations dictionary)
+        feature_order = [
+            'SCGOVTLOAN', 'SCGOVTGUAR', 'SCBANKLOAN', 'SCFAMLOAN', 'SCGRANT',
+            'Combined_Loan_Feature', 'Self_Funded_vs_External', 'Funding_Risk_Profile',
+            'Government_Support', 'Funding_Complexity', 'Bootstrap_vs_Institutional',
+            'Formal_vs_Informal', 'Credit_Dependency'
+        ]
+
+        # Get unique base features that exist in results (preserve order)
+        base_feature_list = []
+        for feature in feature_order:
+            # Check if this feature exists in the results (excluding subgroup variants)
+            if any(key == feature or key.startswith(f"{feature}_SEX1_") or key.startswith(f"{feature}_RACE1_Transformed_")
+                   for key in self.combined_feature_results.keys()):
+                base_feature_list.append(feature)
+
+        # Prepare data structures
         base_features = []
-        overall_degradations = []
-        male_degradations = []
-        female_degradations = []
-        
-        # Get unique base features (exclude SEX1 variants)
-        base_feature_set = set()
+        all_degradations = []  # Will be list of lists for each subgroup
+        subgroup_labels = []
+
+        # Define subgroups to include
+        subgroups = [
+            ('Overall', ''),
+            ('Male', '_SEX1_1'),
+            ('Female', '_SEX1_2')
+        ]
+
+        # Add RACE1_Transformed subgroups if available
+        race_values = set()
         for key in self.combined_feature_results.keys():
-            if '_SEX1_' not in key:
-                base_feature_set.add(key)
-        
-        # Sort features for consistent display
-        for feature in sorted(base_feature_set):
+            if '_RACE1_Transformed_' in key:
+                race_val = key.split('_RACE1_Transformed_')[-1]
+                race_values.add(race_val)
+
+        # Get race labels from data dictionary
+        race_labels = self._get_race_labels()
+
+        for race_val in sorted(race_values):
+            race_label = race_labels.get(race_val, f'Race_{race_val}')
+            subgroups.append((race_label, f'_RACE1_Transformed_{race_val}'))
+        subgroups = subgroups[:-4]
+
+        # Extract subgroup labels for axis
+        subgroup_labels = [sg[0] for sg in subgroups]
+
+        # Collect degradation data for each feature and subgroup (preserving order)
+        for feature in base_feature_list:
             base_features.append(feature.replace('_', ' '))
             
-            # Get overall degradation
-            if feature in self.combined_feature_results:
-                overall_degradations.append(
-                    self.combined_feature_results[feature].get('balanced_accuracy_degradation', 0) * 100
-                )
-            else:
-                overall_degradations.append(0)
+            feature_degradations = []
+            for _, suffix in subgroups:
+                if suffix == '':
+                    # Overall feature
+                    key = feature
+                else:
+                    # Subgroup feature
+                    key = f"{feature}{suffix}"
+                
+                if key in self.combined_feature_results:
+                    degradation = self.combined_feature_results[key].get('balanced_accuracy_degradation', 0) * 100
+                    feature_degradations.append(degradation)
+                else:
+                    feature_degradations.append(0)
             
-            # Get male (SEX1=1) degradation
-            male_key = f"{feature}_SEX1_1"
-            if male_key in self.combined_feature_results:
-                male_degradations.append(
-                    self.combined_feature_results[male_key].get('balanced_accuracy_degradation', 0) * 100
-                )
-            else:
-                male_degradations.append(0)
-            
-            # Get female (SEX1=2) degradation
-            female_key = f"{feature}_SEX1_2"
-            if female_key in self.combined_feature_results:
-                female_degradations.append(
-                    self.combined_feature_results[female_key].get('balanced_accuracy_degradation', 0) * 100
-                )
-            else:
-                female_degradations.append(0)
+            all_degradations.append(feature_degradations)
         
-        # Create the grid chart
-        fig, ax = plt.subplots(figsize=(8, 6))
+        # Create the grid chart with dynamic size
+        n_subgroups = len(subgroup_labels)
+        fig, ax = plt.subplots(figsize=(max(8, n_subgroups * 1.2), 6))
         
         # Prepare data matrix (features x subgroups)
-        degradation_matrix = np.array([overall_degradations, male_degradations, female_degradations]).T
+        degradation_matrix = np.array(all_degradations)
         
         # Create heatmap
         im = ax.imshow(degradation_matrix, cmap='RdYlGn_r', aspect='auto', vmin=-10, vmax=20)
         
         # Set ticks and labels
-        ax.set_xticks([0, 1, 2])
-        ax.set_xticklabels(['Overall', 'Male', 'Female'])
+        ax.set_xticks(range(len(subgroup_labels)))
+        ax.set_xticklabels(subgroup_labels, rotation=45, ha='right')
         ax.set_yticks(range(len(base_features)))
         ax.set_yticklabels(base_features)
         
@@ -663,11 +720,11 @@ class PredictiveUtility:
         
         # Add text annotations
         for i in range(len(base_features)):
-            for j in range(3):
+            for j in range(len(subgroup_labels)):
                 value = degradation_matrix[i, j]
                 color = 'white' if abs(value) > 10 else 'black'
                 ax.text(j, i, f'{value:.1f}%', ha='center', va='center', 
-                       color=color, fontsize=9, fontweight='bold')
+                       color=color, fontsize=8, fontweight='bold')
         
         # Add colorbar
         cbar = plt.colorbar(im, ax=ax)
@@ -685,6 +742,19 @@ class PredictiveUtility:
         print(f"Summary degradation grid created successfully at {plot_path}")
         
         return plot_path
+    
+    def _get_race_labels(self):
+        """Get race labels from data dictionary or return defaults."""
+        if hasattr(self, 'data_dict') and self.data_dict and 'RACE1_Transformed' in self.data_dict:
+            race_dict_values = self.data_dict.get('RACE1_Transformed', {}).get('values', {})
+            # Convert to string keys for consistency
+            return {str(k): v for k, v in race_dict_values.items()}
+        else:
+            # Fallback to default labels
+            return {
+                '1': 'White', '2': 'Black', '3': 'Asian', 
+                '4': 'Am_Indian', '5': 'Pac_Islander', '6': 'Other'
+            }
     
     def _create_combined_feature_visualizations(self):
         """Create visualizations for all combined feature analyses."""
@@ -717,6 +787,8 @@ class PredictiveUtility:
         # Clean feature name - remove SEX1 suffix if present for plotting
         if '_SEX1_' in feature_name:
             base_feature_name = feature_name.rsplit('_SEX1_', 1)[0]
+        elif '_RACE1_Transformed_' in feature_name:
+            base_feature_name = feature_name.rsplit('_RACE1_Transformed_', 1)[0]
         else:
             base_feature_name = feature_name
         
@@ -861,9 +933,19 @@ class PredictiveUtility:
         
         # Save plot with appropriate filename
         if subgroup_name:
-            # Extract SEX value from subgroup_name (e.g., "SEX1=1" -> "1")
-            sex_value = subgroup_name.split('=')[1] if '=' in subgroup_name else subgroup_name
-            plot_filename = f'combined_feature_{base_feature_name.lower()}_sex{sex_value}.png'
+            print(f"DEBUG: subgroup_name = '{subgroup_name}'")  # Debug print
+            if 'SEX1=' in subgroup_name:
+                # Extract SEX value from subgroup_name (e.g., "SEX1=1" -> "1")
+                sex_value = subgroup_name.split('=')[1]
+                plot_filename = f'combined_feature_{base_feature_name.lower()}_sex{sex_value}.png'
+            elif 'RACE1_Transformed=' in subgroup_name:
+                # Extract RACE value from subgroup_name (e.g., "RACE1_Transformed=1" -> "1")
+                race_value = subgroup_name.split('=')[1]
+                plot_filename = f'combined_feature_{base_feature_name.lower()}_race1_transformed{race_value}.png'
+            else:
+                # Fallback for other subgroup types
+                plot_filename = f'combined_feature_{base_feature_name.lower()}_{subgroup_name.lower().replace("=", "_")}.png'
+            print(f"DEBUG: plot_filename = '{plot_filename}'")  # Debug print
         else:
             plot_filename = f'combined_feature_{base_feature_name.lower()}.png'
         plot_path = Path(self.o_path, plot_filename)
