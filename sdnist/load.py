@@ -16,7 +16,7 @@ import numpy as np
 
 import sdnist.strs as strs
 
-DEFAULT_DATASET = 'BenchmarkData'
+DEFAULT_DATASET = 'BenchmarkData_sbocapitalone'
 ACS_DATASET = 'ACSDataExcerpts'
 SBO_DATASET = 'SBODataExcerpts'
 CENSUS1940_DATASET = '1940CensusExcerpts'
