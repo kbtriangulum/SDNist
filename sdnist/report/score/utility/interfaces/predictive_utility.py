@@ -215,16 +215,16 @@ class PredictiveUtilityReport:
         
         # Note: Old individual plots removed - now using combined feature analyses only
         # Add accuracy grid plot first
-        grid_path = Path(self.metric.o_path, 'predictive_utility_accuracy_grid.png')
-        if grid_path.exists():
-            rel_path = "/".join(list(grid_path.parts)[-2:])
-            attachments.append(
-                Attachment(
-                    name='Target and Deid Models Accuracies',
-                    _data=[{strs.IMAGE_NAME: 'predictive_utility_accuracy_grid', strs.PATH: rel_path}],
-                    _type=AttachmentType.ImageLinks
-                )
-            )
+        # grid_path = Path(self.metric.o_path, 'predictive_utility_accuracy_grid.png')
+        # if grid_path.exists():
+        #     rel_path = "/".join(list(grid_path.parts)[-2:])
+        #     attachments.append(
+        #         Attachment(
+        #             name='Target and Deid Models Accuracies',
+        #             _data=[{strs.IMAGE_NAME: 'predictive_utility_accuracy_grid', strs.PATH: rel_path}],
+        #             _type=AttachmentType.ImageLinks
+        #         )
+        #     )
         # Add combined feature analyses if available
         if hasattr(self.metric, 'combined_feature_results') and self.metric.combined_feature_results:
             # Add section header for combined analyses
@@ -309,7 +309,7 @@ class PredictiveUtilityReport:
                     )
                 
                 # Add overall plot
-                self._add_plot_attachment(attachments, base_feature, '', 'Overall')
+                # self._add_plot_attachment(attachments, base_feature, '', 'Overall')
                 #
                 # # Add SEX1 subgroup plots
                 # self._add_demographic_plots(attachments, base_feature, 'SEX1')

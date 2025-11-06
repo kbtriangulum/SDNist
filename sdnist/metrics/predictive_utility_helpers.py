@@ -313,6 +313,7 @@ class PredictiveAnalyzer:
         y_synthetic: pd.Series,
         feature_name: str,
         preprocessor_target=None,
+        preprocessor_synthetic=None,
         model_params: Dict = None,
         subgroup_name: str = None
     ) -> Dict:
@@ -370,7 +371,10 @@ class PredictiveAnalyzer:
                 X_s_test_processed = preprocessor_target.transform(X_s_test)
             except Exception as e:
                 print(f"Error in preprocessing for {feature_name}: {e}")
-                raise
+                X_t_train_processed = X_t_train.values
+                X_t_test_processed = X_t_test.values
+                X_s_train_processed = X_s_train.values
+                X_s_test_processed = X_s_test.values
         else:
             X_t_train_processed = X_t_train.values
             X_t_test_processed = X_t_test.values
@@ -389,8 +393,8 @@ class PredictiveAnalyzer:
         pred_synthetic_on_target = model_synthetic.predict(X_t_test_processed)
         
         # Calculate balanced accuracy only
-        bal_acc_target = balanced_accuracy_score(y_t_test, pred_target_on_target)
-        bal_acc_synthetic = balanced_accuracy_score(y_t_test, pred_synthetic_on_target)
+        bal_acc_target = accuracy_score(y_t_test, pred_target_on_target)
+        bal_acc_synthetic = accuracy_score(y_t_test, pred_synthetic_on_target)
         
         # Calculate confusion matrix components for visualization
         cm_target = confusion_matrix(y_t_test, pred_target_on_target)

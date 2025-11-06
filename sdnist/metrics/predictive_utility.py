@@ -61,19 +61,19 @@ class PredictiveUtility:
         """Main computation method - runs all analyses"""
         
         # Section 1: Individual SC features analysis
-        self._analyze_individual_sc_features()
+        # self._analyze_individual_sc_features()
         
         # Section 2: Combined feature analyses (includes original loan feature)
-        # self._analyze_combined_features()
+        self._analyze_combined_features()
         
         # Section 3: Create visualizations
-        self._create_accuracy_grid()
-        self._create_plot()
-        # self._create_summary_degradation_grid()
-        # self._create_combined_feature_visualizations()
+        # self._create_accuracy_grid()
+        # self._create_plot()
+        self._create_summary_degradation_grid()
+        self._create_combined_feature_visualizations()
         
         # Section 4: Prepare report data
-        # self._prepare_report_data()
+        self._prepare_report_data()
         
         return self.results
     
@@ -109,7 +109,7 @@ class PredictiveUtility:
             transformers.append(('scaler', StandardScaler(), continuous_features))
         
         if categorical_features:
-            transformers.append(('onehot', OneHotEncoder(sparse_output=False, handle_unknown='error'), categorical_features))
+            transformers.append(('onehot', OneHotEncoder(sparse_output=False, handle_unknown='ignore'), categorical_features))
 
         if not transformers:
             return None
@@ -153,6 +153,7 @@ class PredictiveUtility:
                 
                 # Create fresh preprocessors for each feature combination
                 base_preprocessor = self._create_preprocessor(X_columns)
+                synth_preprocessor = self._create_preprocessor(X_columns)
                 preprocessor_target = clone(base_preprocessor) if base_preprocessor else None
 
                 # Run overall analysis using shared model parameters
@@ -163,6 +164,7 @@ class PredictiveUtility:
                     y_synthetic=y_synthetic_combined,
                     feature_name=feature_name,
                     preprocessor_target=preprocessor_target,
+                    preprocessor_synthetic=synth_preprocessor,
                     model_params=self.model_params,
                     subgroup_name=None
                 )
@@ -234,6 +236,7 @@ class PredictiveUtility:
         
         # Create fresh preprocessors for subgroup
         base_preprocessor_sub = self._create_preprocessor(X_columns)
+        synth_preprocessor_sub = self._create_preprocessor(X_columns)
         preprocessor_target_sub = clone(base_preprocessor_sub) if base_preprocessor_sub else None
         
         # Run subgroup analysis
@@ -245,6 +248,7 @@ class PredictiveUtility:
             y_synthetic=y_synthetic_subgroup,
             feature_name=feature_name,
             preprocessor_target=preprocessor_target_sub,
+            preprocessor_synthetic=synth_preprocessor_sub,
             model_params=self.model_params,
             subgroup_name=subgroup_name
         )
