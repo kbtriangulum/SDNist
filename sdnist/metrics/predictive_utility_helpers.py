@@ -9,7 +9,8 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple, Union
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score, classification_report, confusion_matrix
-
+from sklearn.exceptions import ConvergenceWarning
+import warnings
 
 class FeatureCombiner:
     """
@@ -338,16 +339,16 @@ class PredictiveAnalyzer:
         if model_params is None:
             raise ValueError("model_params must be provided")
         
-        if subgroup_name:
-            print(f'\nProcessing {feature_name} analysis for {subgroup_name}...')
-        else:
-            print(f'\nProcessing {feature_name} analysis...')
+        # if subgroup_name:
+        #     print(f'\nProcessing {feature_name} analysis for {subgroup_name}...')
+        # else:
+        #     print(f'\nProcessing {feature_name} analysis...')
         
         # Analyze class distribution
-        if subgroup_name:
-            print(f"\n=== {feature_name} Class Distribution ({subgroup_name}) ===")
-        else:
-            print(f"\n=== {feature_name} Class Distribution ===")
+        # if subgroup_name:
+        #     print(f"\n=== {feature_name} Class Distribution ({subgroup_name}) ===")
+        # else:
+        #     print(f"\n=== {feature_name} Class Distribution ===")
         target_dist = y_target.value_counts()
         
         # Split data
@@ -370,7 +371,7 @@ class PredictiveAnalyzer:
                 X_s_train_processed = preprocessor_target.transform(X_s_train)
                 X_s_test_processed = preprocessor_target.transform(X_s_test)
             except Exception as e:
-                print(f"Error in preprocessing for {feature_name}: {e}")
+                # print(f"Error in preprocessing for {feature_name}: {e}")
                 X_t_train_processed = X_t_train.values
                 X_t_test_processed = X_t_test.values
                 X_s_train_processed = X_s_train.values
@@ -383,10 +384,17 @@ class PredictiveAnalyzer:
 
         # Train models
         model_target = LogisticRegression(**model_params)
-        model_target.fit(X_t_train_processed, y_t_train)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=ConvergenceWarning,
+                                    message=r".*lbfgs failed to converge*")
+            model_target.fit(X_t_train_processed, y_t_train)
         
         model_synthetic = LogisticRegression(**model_params)
-        model_synthetic.fit(X_s_train_processed, y_s_train)
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=ConvergenceWarning,
+                                    message=r".*lbfgs failed to converge*")
+            model_synthetic.fit(X_s_train_processed, y_s_train)
         
         # Get predictions
         pred_target_on_target = model_target.predict(X_t_test_processed)

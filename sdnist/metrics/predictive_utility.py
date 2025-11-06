@@ -14,7 +14,6 @@ from sdnist.utils import *
 import sdnist.strs as strs
 from sdnist.metrics.predictive_utility_helpers import FeatureCombiner, PredictiveAnalyzer
 
-
 class PredictiveUtility:
     NAME = 'Predictive Utility'
     
@@ -118,7 +117,7 @@ class PredictiveUtility:
     
     def _analyze_combined_features(self):
         """Analyze all combined feature combinations using the helper module."""
-        print('Processing combined feature analyses...')
+        # print('Processing combined feature analyses...')
         
         # Get X features (all non-SC columns)
         X_columns = [col for col in self.target.columns 
@@ -143,9 +142,10 @@ class PredictiveUtility:
             'Formal_vs_Informal': self.feature_combiner.create_formal_vs_informal,
             'Credit_Dependency': self.feature_combiner.create_credit_dependency
         }
-        
+        print('--Predictive Utility')
         # Analyze each combination for overall and by SEX1 subgroups
         for feature_name, combiner_func in feature_combinations.items():
+            print(f'----Processing: {feature_name}')
             try:
                 # Overall analysis (all data)
                 y_target_combined = combiner_func(self.target)
@@ -170,7 +170,7 @@ class PredictiveUtility:
                 )
                 
                 self.combined_feature_results[feature_name] = results
-                self.analyzer.print_summary(feature_name)
+                # self.analyzer.print_summary(feature_name)
                 
                 # Analyze by demographic subgroups
                 self._analyze_demographic_subgroups(feature_name, combiner_func, X_target, X_synthetic, X_columns)
@@ -180,7 +180,7 @@ class PredictiveUtility:
                 continue
     
     def _analyze_demographic_subgroups(self, feature_name, combiner_func, X_target, X_synthetic, X_columns):
-        """Analyze subgroups by SEX1 and RACE1_Transformed."""
+        """Analyze subgroups by SEX1 and AGE1."""
         
         # SEX1 subgroup analysis
         if 'SEX1' in self.target.columns and 'SEX1' in self.synthetic.columns:
@@ -196,18 +196,18 @@ class PredictiveUtility:
                     print(f"Error analyzing {feature_name} for SEX1={sex_value}: {e}")
                     continue
         
-        # RACE1_Transformed subgroup analysis
-        if 'RACE1_Transformed' in self.target.columns and 'RACE1_Transformed' in self.synthetic.columns:
-            race_values = self.target['RACE1_Transformed'].unique()
+        # AGE1 subgroup analysis
+        if 'AGE1' in self.target.columns and 'AGE1' in self.synthetic.columns:
+            age_values = self.target['AGE1'].unique()
             
-            for race_value in race_values:
+            for age_value in age_values:
                 try:
                     self._run_subgroup_analysis(
                         feature_name, combiner_func, X_target, X_synthetic, X_columns,
-                        'RACE1_Transformed', race_value
+                        'AGE1', age_value
                     )
                 except Exception as e:
-                    print(f"Error analyzing {feature_name} for RACE1_Transformed={race_value}: {e}")
+                    print(f"Error analyzing {feature_name} for AGE1={age_value}: {e}")
                     continue
     
     def _run_subgroup_analysis(self, feature_name, combiner_func, X_target, X_synthetic, X_columns, 
@@ -256,7 +256,7 @@ class PredictiveUtility:
         # Store subgroup results with special key
         subgroup_key = f"{feature_name}_{demographic_col}_{demographic_value}"
         self.combined_feature_results[subgroup_key] = results_subgroup
-        self.analyzer.print_summary(feature_name)
+        # self.analyzer.print_summary(feature_name)
 
 
     def _analyze_individual_sc_features(self):
@@ -275,7 +275,6 @@ class PredictiveUtility:
         
         # Process each SC target
         for sc_target in self.SC_TARGETS:
-            print('processing: ', sc_target)
             if sc_target not in self.target.columns:
                 continue
             
@@ -629,7 +628,7 @@ class PredictiveUtility:
     
     def _create_summary_degradation_grid(self):
         """Create a summary grid showing accuracy degradation for all features across subgroups."""
-        print(f"\nCreating summary degradation grid...")
+        # print(f"\nCreating summary degradation grid...")
         if not self.combined_feature_results:
             print("No combined feature results available for summary grid")
             return
@@ -646,7 +645,7 @@ class PredictiveUtility:
         base_feature_list = []
         for feature in feature_order:
             # Check if this feature exists in the results (excluding subgroup variants)
-            if any(key == feature or key.startswith(f"{feature}_SEX1_") or key.startswith(f"{feature}_RACE1_Transformed_")
+            if any(key == feature or key.startswith(f"{feature}_SEX1_") or key.startswith(f"{feature}_AGE1_")
                    for key in self.combined_feature_results.keys()):
                 base_feature_list.append(feature)
 
@@ -662,20 +661,19 @@ class PredictiveUtility:
             ('Female', '_SEX1_2')
         ]
 
-        # Add RACE1_Transformed subgroups if available
-        race_values = set()
+        # Add AGE1 subgroups if available
+        age_values = set()
         for key in self.combined_feature_results.keys():
-            if '_RACE1_Transformed_' in key:
-                race_val = key.split('_RACE1_Transformed_')[-1]
-                race_values.add(race_val)
+            if '_AGE1_' in key:
+                age_val = key.split('_AGE1_')[-1]
+                age_values.add(age_val)
 
-        # Get race labels from data dictionary
-        race_labels = self._get_race_labels()
+        # Get age labels from data dictionary
+        age_labels = self._get_age_labels()
 
-        for race_val in sorted(race_values):
-            race_label = race_labels.get(race_val, f'Race_{race_val}')
-            subgroups.append((race_label, f'_RACE1_Transformed_{race_val}'))
-        subgroups = subgroups[:-4]
+        for age_val in sorted(age_values):
+            age_label = age_labels.get(age_val, f'Age_{age_val}')
+            subgroups.append((age_label, f'_AGE1_{age_val}'))
 
         # Extract subgroup labels for axis
         subgroup_labels = [sg[0] for sg in subgroups]
@@ -739,26 +737,28 @@ class PredictiveUtility:
         
         # Save plot
         plot_path = Path(self.o_path, 'summary_degradation_grid.png')
-        print(f"Saving summary grid to: {plot_path}")
         fig.savefig(plot_path, dpi=100, bbox_inches='tight')
         plt.close(fig)
         
-        print(f"Summary degradation grid created successfully at {plot_path}")
-        
         return plot_path
     
-    def _get_race_labels(self):
-        """Get race labels from data dictionary or return defaults."""
-        if hasattr(self, 'data_dict') and self.data_dict and 'RACE1_Transformed' in self.data_dict:
-            race_dict_values = self.data_dict.get('RACE1_Transformed', {}).get('values', {})
+    def _get_age_labels(self):
+        """Get age labels from data dictionary or return defaults."""
+        if hasattr(self, 'data_dict') and self.data_dict and 'AGE1' in self.data_dict:
+            age_dict_values = self.data_dict.get('AGE1', {}).get('values', {})
             # Convert to string keys for consistency
-            return {str(k): v for k, v in race_dict_values.items()}
+            return {str(k): v for k, v in age_dict_values.items()}
         else:
             # Fallback to default labels
             return {
-                '1': 'White', '2': 'Black', '3': 'Asian', 
-                '4': 'Am_Indian', '5': 'Pac_Islander', '6': 'Other'
-            }
+            "0": "NOT REPORTED",
+            "1": "UNDER 25",
+            "2": "25 TO 34",
+            "3": "35 TO 44",
+            "4": "45 TO 54",
+            "5": "55 TO 64",
+            "6": "65 OR OVER"
+        }
     
     def _create_combined_feature_visualizations(self):
         """Create visualizations for all combined feature analyses."""
@@ -766,9 +766,9 @@ class PredictiveUtility:
             return []
         
         # Debug: Show what features we have
-        print(f"\nCreating plots for {len(self.combined_feature_results)} feature analyses:")
-        for key in sorted(self.combined_feature_results.keys()):
-            print(f"  - {key}")
+        # print(f"\nCreating plots for {len(self.combined_feature_results)} feature analyses:")
+        # for key in sorted(self.combined_feature_results.keys()):
+        #     print(f"  - {key}")
         
         plot_paths = []
         
@@ -791,8 +791,8 @@ class PredictiveUtility:
         # Clean feature name - remove SEX1 suffix if present for plotting
         if '_SEX1_' in feature_name:
             base_feature_name = feature_name.rsplit('_SEX1_', 1)[0]
-        elif '_RACE1_Transformed_' in feature_name:
-            base_feature_name = feature_name.rsplit('_RACE1_Transformed_', 1)[0]
+        elif 'AGE1' in feature_name:
+            base_feature_name = feature_name.rsplit('_AGE1_', 1)[0]
         else:
             base_feature_name = feature_name
         
@@ -937,19 +937,19 @@ class PredictiveUtility:
         
         # Save plot with appropriate filename
         if subgroup_name:
-            print(f"DEBUG: subgroup_name = '{subgroup_name}'")  # Debug print
+            # print(f"DEBUG: subgroup_name = '{subgroup_name}'")  # Debug print
             if 'SEX1=' in subgroup_name:
                 # Extract SEX value from subgroup_name (e.g., "SEX1=1" -> "1")
                 sex_value = subgroup_name.split('=')[1]
                 plot_filename = f'combined_feature_{base_feature_name.lower()}_sex{sex_value}.png'
-            elif 'RACE1_Transformed=' in subgroup_name:
-                # Extract RACE value from subgroup_name (e.g., "RACE1_Transformed=1" -> "1")
-                race_value = subgroup_name.split('=')[1]
-                plot_filename = f'combined_feature_{base_feature_name.lower()}_race1_transformed{race_value}.png'
+            elif 'AGE1=' in subgroup_name:
+                # Extract AGE1 value from subgroup_name (e.g., "AGE1=1" -> "1")
+                age_value = subgroup_name.split('=')[1]
+                plot_filename = f'combined_feature_{base_feature_name.lower()}_age1_{age_value}.png'
             else:
                 # Fallback for other subgroup types
                 plot_filename = f'combined_feature_{base_feature_name.lower()}_{subgroup_name.lower().replace("=", "_")}.png'
-            print(f"DEBUG: plot_filename = '{plot_filename}'")  # Debug print
+            # print(f"DEBUG: plot_filename = '{plot_filename}'")  # Debug print
         else:
             plot_filename = f'combined_feature_{base_feature_name.lower()}.png'
         plot_path = Path(self.o_path, plot_filename)

@@ -188,7 +188,7 @@ class PredictiveUtilityReport:
             # Calculate overall statistics from combined features (balanced accuracy only)
             # Exclude subgroup results from overall statistics
             overall_results = {k: v for k, v in self.metric.combined_feature_results.items() 
-                             if '_SEX1_' not in k and '_RACE1_Transformed_' not in k}
+                             if '_SEX1_' not in k and '_AGE1_' not in k}
             all_target_acc = [r.get('balanced_accuracy_target', 0) for r in overall_results.values()]
             all_synthetic_acc = [r.get('balanced_accuracy_synthetic', 0) for r in overall_results.values()]
             all_degradation = [r.get('balanced_accuracy_degradation', 0) for r in overall_results.values()]
@@ -238,10 +238,10 @@ class PredictiveUtilityReport:
             
             # Add summary degradation grid if it exists
             summary_grid_path = Path(self.metric.o_path, 'summary_degradation_grid.png')
-            print(f"Debug: Looking for summary grid at {summary_grid_path}")
+            # print(f"Debug: Looking for summary grid at {summary_grid_path}")
             if summary_grid_path.exists():
                 rel_path = "/".join(list(summary_grid_path.parts)[-2:])
-                print(f"Debug: Summary grid found, adding attachment with rel_path: {rel_path}")
+                # print(f"Debug: Summary grid found, adding attachment with rel_path: {rel_path}")
                 attachments.append(
                     Attachment(
                         name='Summary: Accuracy Degradation by Group',
@@ -249,7 +249,7 @@ class PredictiveUtilityReport:
                         _type=AttachmentType.ImageLinks
                     )
                 )
-                print(f"Debug: Summary grid attachment added successfully")
+                # print(f"Debug: Summary grid attachment added successfully")
             else:
                 print(f"Warning: Summary grid not found at {summary_grid_path}")
             
@@ -290,8 +290,8 @@ class PredictiveUtilityReport:
                 # Extract base feature name (without SEX1 suffix)
                 if '_SEX1_' in feature_key:
                     base_name = feature_key.rsplit('_SEX1_', 1)[0]
-                elif '_RACE1_Transformed_' in feature_key:
-                    base_name = feature_key.rsplit('_RACE1_Transformed_', 1)[0]
+                elif '_AGE1_' in feature_key:
+                    base_name = feature_key.rsplit('_AGE1_', 1)[0]
                 else:
                     base_name = feature_key
                 base_features.add(base_name)
@@ -309,36 +309,41 @@ class PredictiveUtilityReport:
                     )
                 
                 # Add overall plot
-                # self._add_plot_attachment(attachments, base_feature, '', 'Overall')
-                #
-                # # Add SEX1 subgroup plots
-                # self._add_demographic_plots(attachments, base_feature, 'SEX1')
-                #
-                # # Add RACE1_Transformed subgroup plots
-                # self._add_demographic_plots(attachments, base_feature, 'RACE1_Transformed')
+                self._add_plot_attachment(attachments, base_feature, '', 'Overall')
+
+                # Add SEX1 subgroup plots
+                self._add_demographic_plots(attachments, base_feature, 'SEX1')
+
+                # Add AGE1 subgroup plots
+                self._add_demographic_plots(attachments, base_feature, 'AGE1')
         
         # Create packet and add to UI
-        print(f"Debug: Creating packet with {len(attachments)} attachments")
+        # print(f"Debug: Creating packet with {len(attachments)} attachments")
         packet = UtilityScorePacket(
             self.metric.NAME,
             None,
             attachments
         )
         self.r_ui_d.add(packet)
-        print(f"Debug: Packet added to UI with attachments")
+        # print(f"Debug: Packet added to UI with attachments")
     
-    def _get_race_labels(self):
-        """Get race labels from data dictionary or return defaults."""
-        if hasattr(self.metric, 'data_dict') and self.metric.data_dict and 'RACE1_Transformed' in self.metric.data_dict:
-            race_dict_values = self.metric.data_dict.get('RACE1_Transformed', {}).get('values', {})
+    def _get_age_labels(self):
+        """Get age labels from data dictionary or return defaults."""
+        if hasattr(self, 'data_dict') and self.data_dict and 'AGE1' in self.data_dict:
+            age_dict_values = self.data_dict.get('AGE1', {}).get('values', {})
             # Convert to string keys for consistency
-            return {str(k): v for k, v in race_dict_values.items()}
+            return {str(k): v for k, v in age_dict_values.items()}
         else:
             # Fallback to default labels
             return {
-                '1': 'White', '2': 'Black', '3': 'Asian', 
-                '4': 'Am_Indian', '5': 'Pac_Islander', '6': 'Other'
-            }
+            "0": "NOT REPORTED",
+            "1": "UNDER 25",
+            "2": "25 TO 34",
+            "3": "35 TO 44",
+            "4": "45 TO 54",
+            "5": "55 TO 64",
+            "6": "65 OR OVER"
+        }
     
     def _add_demographic_summaries(self, feature_name, combined_summary_lines):
         """Add demographic subgroup summaries for a feature."""
@@ -357,22 +362,22 @@ class PredictiveUtilityReport:
                 f"    • {sex_label}: {sub_bal_acc_target:.3f} → {sub_bal_acc_synthetic:.3f} (Δ{sub_degradation:+.3f})<br>"
             )
         
-        # RACE1_Transformed subgroups
-        race_subgroups = [(k, k.split('_')[-1]) for k in self.metric.combined_feature_results.keys() 
-                          if k.startswith(f"{feature_name}_RACE1_Transformed_")]
+        # AGE1 subgroups
+        age_subgroups = [(k, k.split('_')[-1]) for k in self.metric.combined_feature_results.keys()
+                          if k.startswith(f"{feature_name}_AGE1_")]
         
-        # Get race labels from data dictionary
-        race_labels = self._get_race_labels()
+        # Get age labels from data dictionary
+        age_labels = self._get_age_labels()
         
-        for subgroup_key, race_value in sorted(race_subgroups):
+        for subgroup_key, age_value in sorted(age_subgroups):
             sub_results = self.metric.combined_feature_results[subgroup_key]
             sub_bal_acc_target = sub_results.get('balanced_accuracy_target', 0)
             sub_bal_acc_synthetic = sub_results.get('balanced_accuracy_synthetic', 0)
             sub_degradation = sub_results.get('balanced_accuracy_degradation', 0)
             
-            race_label = race_labels.get(race_value, f'Race_{race_value}')
+            age_label = age_labels.get(age_value, f'Age_{age_value}')
             combined_summary_lines.append(
-                f"    • {race_label}: {sub_bal_acc_target:.3f} → {sub_bal_acc_synthetic:.3f} (Δ{sub_degradation:+.3f})<br>"
+                f"    • {age_label}: {sub_bal_acc_target:.3f} → {sub_bal_acc_synthetic:.3f} (Δ{sub_degradation:+.3f})<br>"
             )
     
     def _add_plot_attachment(self, attachments, base_feature, suffix, label):
@@ -382,7 +387,6 @@ class PredictiveUtilityReport:
         else:
             plot_filename = f'combined_feature_{base_feature.lower()}.png'
 
-        print(plot_filename)
         plot_path = Path(self.metric.o_path, plot_filename)
         if plot_path.exists():
             rel_path = "/".join(list(plot_path.parts)[-2:])
@@ -410,9 +414,9 @@ class PredictiveUtilityReport:
         if demographic_col == 'SEX1':
             label_map = {'1': 'Male', '2': 'Female'}
             suffix_template = 'sex{}'
-        elif demographic_col == 'RACE1_Transformed':
-            label_map = self._get_race_labels()
-            suffix_template = 'race1_transformed{}'
+        elif demographic_col == 'AGE1':
+            label_map = self._get_age_labels()
+            suffix_template = 'age1_{}'
         else:
             label_map = {}
             suffix_template = '{}'
