@@ -4,6 +4,7 @@
         "Kmarginal",
         "Univariates",
         "PropensityMSE",
+        "PredictiveUtility",
         "PCA",
         "Correlations",
         "Unique Exact Matches"
